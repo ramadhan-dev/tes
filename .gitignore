@@ -1,0 +1,9 @@
+node_modules
+.env
+.idea
+yarn.lock
+prisma/generated/*
+prisma/migrations/*
+prisma/seeders/*
+logs/
+schema.bak

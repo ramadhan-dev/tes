@@ -1,0 +1,112 @@
+datasource db {
+  provider = "postgresql"
+    url       = env("DATABASE_URL")
+    directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/database"
+}
+
+enum SpaceType {
+  INTERNAL
+  EXTERNAL
+}
+
+enum SpaceStatus {
+  ACTIVE
+  ARCHIVED
+  CLOSED
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  CONTRIBUTOR
+  LISTENER
+}
+
+model User {
+  id           String    @id @default(uuid())
+  name         String
+  email        String    @unique
+  is_internal  Boolean   @default(true) 
+  created_at   DateTime  @default(now())
+
+  ownedSpaces  Space[]   @relation("UserOwnedSpaces")
+  memberships  SpaceMember[] @relation("UserMemberships")
+  topicReplies TopicReply[] @relation("TopicAuthor")
+  
+  @@map("users")
+}
+
+
+model Space {
+  id             String        @id @default(uuid())
+  name           String
+  description    String?
+  type           SpaceType     @default(INTERNAL) 
+  status         SpaceStatus   @default(ACTIVE)   
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+  archived_at    DateTime?
+
+  deadline         DateTime? 
+  tags             String[] 
+  integration_id   String?  
+
+  owner          User          @relation("UserOwnedSpaces", fields: [owner_id], references: [id])
+  owner_id       String
+  members        SpaceMember[]
+  topics         Topic[]
+
+  @@index([status])
+  @@index([type])
+  @@index([owner_id])
+  @@index([created_at])
+  @@map("spaces")
+}
+
+
+model SpaceMember {
+  id        String        @id @default(uuid())
+  space_id  String
+  user_id   String
+  role      MemberRole    @default(CONTRIBUTOR)
+  joined_at DateTime      @default(now())
+
+  space     Space         @relation(fields: [space_id], references: [id], onDelete: Cascade)
+  user      User          @relation("UserMemberships", fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([space_id, user_id])
+  @@index([user_id])
+  @@index([space_id])
+  @@map("space_members")
+}
+
+model Topic {
+  id         String   @id @default(uuid())
+  space_id   String
+  title      String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  replies    TopicReply[]
+
+  space      Space    @relation(fields: [space_id], references: [id], onDelete: Cascade)
+  @@map("topics")
+}
+
+
+model TopicReply {
+  id         String   @id @default(uuid())
+  topic_id   String
+  author_id  String
+  content    String   
+  is_voice   Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  topic      Topic    @relation(fields: [topic_id], references: [id], onDelete: Cascade)
+  author     User   @relation("TopicAuthor", fields: [author_id], references: [id])
+  @@map("topic_replies")
+}
