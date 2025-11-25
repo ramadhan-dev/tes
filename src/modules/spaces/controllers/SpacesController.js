@@ -7,13 +7,6 @@ class SpacesController {
     }
 
 
-
-    isInternalEmail(email) {
-        return email.endsWith('@company.com');
-    }
-
-
-
     async create(req, res) {
 
         try {
@@ -164,12 +157,11 @@ class SpacesController {
                         return res.status(400).json(this.formatResponse('', `External user ${email} cannot join internal space.`, 400))
                     }
                 }
-
-                await this.spacesService.addMembersToSpaceRaw(spaceId, members);
-
-                return res.status(201).json(this.formatResponse({ added_count: members.length }, 'Members added successfully'));
-
             }
+
+            await this.spacesService.addMembersToSpaceRaw(spaceId, members);
+
+            return res.status(201).json(this.formatResponse({ added_count: members.length }, 'Members added successfully'));
         } catch (error) {
             return res.status(500).json(this.formatResponse('', error.message, 500))
         }
@@ -266,6 +258,126 @@ class SpacesController {
             return res.status(500).json(this.formatResponse('', error.message, 500))
         }
     }
+
+
+
+    async updateSpace(req, res){
+        try{
+            const { spaceId } = req.params;
+            const requesterId = req.body.user_id; 
+            const { name, description, status, metadata } = req.body;
+
+            const space = await this.spacesService.getSpaceWithRequesterRole(spaceId, requesterId);
+            if (!space) {
+                return res.status(404).json(this.formatResponse('', `Space not found or you are not a member.`, 404))
+            }
+
+            const allowedRoles = ['OWNER', 'ADMIN'];
+            if (!allowedRoles.includes(space.requesterRole)) {
+                return res.status(403).json(this.formatResponse('', 'Only OWNER or ADMIN can update this space', 403));
+            }
+
+            const updateData = { name, description, status, metadata };
+            const updatedSpace = await this.spacesService.updateSpace(spaceId, updateData);
+
+            return res.status(200).json(this.formatResponse(updatedSpace, 'Space updated successfully'));
+        } catch(error) {
+            return res.status(500).json(this.formatResponse('', error.message, 500))
+            
+        }
+    }
+
+
+
+    async archiveSpace(req, res) {
+        try {
+            const { spaceId } = req.validatedData;
+            const requesterId = req.body.user_id; 
+
+            const space = await this.spacesService.getSpaceWithRequesterRole(spaceId, requesterId);
+            if (!space) {
+                return res.status(404).json(this.formatResponse('', 'Space not found or you are not a member', 404));
+            }
+
+            if (!['OWNER', 'ADMIN'].includes(space.requesterRole)) {
+                return res.status(403).json(this.formatResponse('', 'Only OWNER or ADMIN can archive this space', 403));
+            }
+
+            if (space.status === 'ARCHIVED') {
+                return res.status(400).json(this.formatResponse('', 'Space is already archived', 400));
+            }
+
+            const archivedSpace = await this.spacesService.updateSpace(spaceId, { status: 'ARCHIVED' });
+
+            return res.status(200).json(this.formatResponse(
+                { id: archivedSpace.id, status: archivedSpace.status, archived_at: archivedSpace.archived_at },
+                'Space archived successfully'
+            ));
+
+        } catch (error) {
+            console.error('Archive space error:', error);
+            return res.status(500).json(this.formatResponse('', error.message || 'Unexpected error', 500));
+        }
+    }
+
+
+
+    async getMembers(req, res) {
+        try {
+            const { spaceId } = req.validatedData;
+            const userId = req.body.user_id; 
+
+            const space = await this.spacesService.getSpaceWithRequesterRole(spaceId, userId);
+            if (!space) {
+                return res.status(404).json(this.formatResponse('', 'Space not found or you are not a member', 404));
+            }
+
+            const members = await this.spacesService.getSpaceMembers(spaceId);
+
+            return res.status(200).json(this.formatResponse({
+                space_id: spaceId,
+                member_count: members.length,
+                members,
+            }, 'Members retrieved successfully'));
+        } catch (error) {
+            console.error('Get members error:', error);
+            return res.status(500).json(this.formatResponse('', error.message || 'Unexpected error', 500));
+        }
+    }
+
+
+
+    async updateMemberRole(req, res) {
+        try {
+            const { spaceId, targetMemberId, role } = req.validatedData;
+            const requesterId = req.body.user_id; 
+
+            const space = await this.spacesService.getSpaceWithRequesterRole(spaceId, requesterId);
+            if (!space || !space.requesterRole) {
+                return res.status(404).json(this.formatResponse('', 'Space not found or you are not a member', 404));
+            }
+
+            if (space.requesterRole !== 'OWNER') {
+                return res.status(403).json(this.formatResponse('', 'Only OWNER can change member roles', 403));
+            }
+
+            if (targetMemberId === requesterId) {
+                return res.status(400).json(this.formatResponse('', 'You cannot change your own role', 400));
+            }
+           
+            const updatedMember = await this.spacesService.updateMemberRole(spaceId, targetMemberId, role);
+
+            return res.status(200).json(this.formatResponse({
+                member_id: updatedMember.user_id,
+                role: updatedMember.role,
+            }, 'Member role updated successfully'));
+
+        } catch (error) {
+            console.error('Update member role error:', error);
+            return res.status(500).json(this.formatResponse('', error.message || 'Unexpected error', 500));
+        }
+    }
+
 
 }
 

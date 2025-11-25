@@ -220,6 +220,114 @@ class SpacesService {
     }
 
 
+    async updateSpace(spaceId, updateData) {
+
+        const { name, description, status, metadata } = updateData;
+
+        const payload = {};
+        if (name !== undefined) payload.name = name;
+        if (description !== undefined) payload.description = description;
+
+        if (status !== undefined) {
+            payload.status = status;
+            if (status === 'ARCHIVED') {
+                payload.archived_at = new Date();
+            } else if (status === 'ACTIVE') {
+                payload.archived_at = null; 
+            }
+        }
+
+        if (metadata !== undefined) {
+            const { deadline, tags, integration_id } = metadata;
+            payload.deadline = deadline ? new Date(deadline) : null;
+            payload.tags = Array.isArray(tags) ? tags : [];
+            payload.integration_id = integration_id || null;
+        }
+
+        delete payload.type;
+        delete payload.owner_id;
+
+        return this.prisma.$transaction(async (tx) => {
+            const updated = await tx.space.update({
+                where: { id: spaceId },
+                data: payload,
+                select: {
+                    id: true,
+                    name: true,
+                    description: true,
+                    type: true,
+                    status: true,
+                    created_at: true,
+                    archived_at: true,
+                    deadline: true,
+                    tags: true,
+                    integration_id: true,
+                    owner: {
+                        select: { id: true, name: true }
+                    }
+                }
+            });
+
+            return updated;
+        });
+
+    }
+
+
+    async getSpaceMembers(spaceId) {
+        const members = await this.prisma.spaceMember.findMany({
+            where: { space_id: spaceId },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        is_internal: true, 
+                    },
+                },
+            },
+            orderBy: { id: 'asc' },
+        });
+
+        return members.map(m => ({
+            id: m.user.id,
+            name: m.user.name,
+            email: m.user.email,
+            role: m.role,
+            is_internal: m.user.is_internal,
+        }));
+    }
+
+
+    async updateMemberRole(spaceId, memberId, newRole) {
+        return this.prisma.$transaction(async (tx) => {
+            
+            const member = await tx.spaceMember.findUnique({
+                where: { space_id_user_id: { space_id: spaceId, user_id: memberId } },
+            });
+
+            if (!member) {
+                throw new Error('Member not found in this space');
+            }
+
+            if (newRole === 'OWNER') {
+                throw new Error('Cannot assign OWNER role via this endpoint');
+            }
+
+            if (member.role === 'OWNER') {
+                throw new Error('Cannot change the role of the current OWNER');
+            }
+
+            const updated = await tx.spaceMember.update({
+                where: { space_id_user_id: { space_id: spaceId, user_id: memberId } },
+                data: { role: newRole },
+                select: { user_id: true, role: true },
+            });
+
+            return updated;
+        });
+    }
 }
 
 module.exports = SpacesService;

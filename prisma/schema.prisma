@@ -36,7 +36,8 @@ model User {
 
   ownedSpaces  Space[]   @relation("UserOwnedSpaces")
   memberships  SpaceMember[] @relation("UserMemberships")
-  topicReplies TopicReply[] @relation("TopicAuthor")
+  authoredTopics   Topic[]   @relation("TopicAuthor")
+  topicReplies     TopicReply[] @relation("ReplyAuthor")
   
   @@map("users")
 }
@@ -85,15 +86,30 @@ model SpaceMember {
   @@map("space_members")
 }
 
-model Topic {
-  id         String   @id @default(uuid())
-  space_id   String
-  title      String
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-  replies    TopicReply[]
 
-  space      Space    @relation(fields: [space_id], references: [id], onDelete: Cascade)
+enum TopicStatus {
+  OPEN
+  RESOLVED
+  CLOSED
+}
+
+model Topic {
+  id          String       @id @default(uuid())
+  space_id    String
+  author_id   String
+  title       String
+  description String?
+  status      TopicStatus  @default(OPEN)
+  created_at  DateTime     @default(now())
+  updated_at  DateTime     @updatedAt
+  closed_at   DateTime?
+
+  space       Space        @relation(fields: [space_id], references: [id], onDelete: Cascade)
+  author      User         @relation("TopicAuthor", fields: [author_id], references: [id])
+  replies     TopicReply[]
+
+  @@index([space_id])
+  @@index([author_id])
   @@map("topics")
 }
 
@@ -102,11 +118,14 @@ model TopicReply {
   id         String   @id @default(uuid())
   topic_id   String
   author_id  String
-  content    String   
+  content    String
   is_voice   Boolean  @default(false)
   created_at DateTime @default(now())
 
   topic      Topic    @relation(fields: [topic_id], references: [id], onDelete: Cascade)
-  author     User   @relation("TopicAuthor", fields: [author_id], references: [id])
+  author     User     @relation("ReplyAuthor", fields: [author_id], references: [id])
+
+  @@index([topic_id])
+  @@index([author_id])
   @@map("topic_replies")
 }
